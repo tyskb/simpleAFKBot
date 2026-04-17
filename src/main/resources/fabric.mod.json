@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "afk-bot",
+  "version": "${version}",
+  "name": "AFK Bot Mod",
+  "description": "Spawns a fake player bot that stands in the server to keep chunks loaded.",
+  "authors": ["You"],
+  "contact": {},
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.afkbot.AfkBotMod"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": ">=26.1",
+    "java": ">=21"
+  }
+}
