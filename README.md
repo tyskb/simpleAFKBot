@@ -34,7 +34,7 @@ A simple, standalone server-side Fabric mod that spawns fake player bots to keep
 
 - **Chunk loading**: Bots act as real players, so the full entity-processing radius around them stays active (mobs spawn, redstone runs, crops grow, hoppers work)
 - **Death handling**: If a bot dies (falls in lava, killed by mobs, etc.), it is automatically removed from the server
-- **Auto-cleanup**: All bots are removed if the server has no real players for 5 minutes
+- **Auto-cleanup**: All bots are removed if the server has no real players for 5 minutes (configurable)
 - **Ownership**: Players can only remove their own bots. OPs can manage all bots
 
 ## Building from Source
