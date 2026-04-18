@@ -20,6 +20,8 @@ A simple, standalone server-side Fabric mod that spawns fake player bots to keep
 | `/bot config` | OPs only | Shows current bot limit settings |
 | `/bot config maxPerPlayer <number>` | OPs only | Set max bots per player (default: 2) |
 | `/bot config maxTotal <number>` | OPs only | Set max bots server-wide (default: 10) |
+| `/bot config autoCleanup on` | OPs only | Bots removed after 5 min with no players (default) |
+| `/bot config autoCleanup off` | OPs only | Bots stay forever until manually removed |
 
 ## Limits
 
