@@ -25,6 +25,9 @@ public class BotManager {
     private static int maxBotsPerPlayer = 2;
     private static int maxBotsTotal = 10;
 
+    // Auto-cleanup toggle (can be turned on/off by OPs)
+    private static boolean autoCleanupEnabled = true;
+
     // Auto-remove timer: ticks since server had no real players
     private static int emptyServerTicks = 0;
     private static final int AUTO_REMOVE_TICKS = 5 * 60 * 20; // 5 minutes = 6000 ticks
@@ -45,6 +48,14 @@ public class BotManager {
 
     public static void setMaxBotsTotal(int value) {
         maxBotsTotal = Math.max(1, value);
+    }
+
+    public static boolean isAutoCleanupEnabled() {
+        return autoCleanupEnabled;
+    }
+
+    public static void setAutoCleanupEnabled(boolean value) {
+        autoCleanupEnabled = value;
     }
 
     /**
@@ -69,7 +80,7 @@ public class BotManager {
     /**
      * Called every server tick.
      * - Checks if any bot has died, and removes it.
-     * - Checks if only bots remain on the server. After 5 min, removes all bots.
+     * - If auto-cleanup is enabled, checks if only bots remain. After 5 min, removes all bots.
      */
     public static void tick(MinecraftServer server) {
         // Check for dead bots and remove them
@@ -85,8 +96,8 @@ public class BotManager {
             removeBotInternal(server, name);
         }
 
-        // Auto-remove timer when no real players online
-        if (activeBots.isEmpty()) {
+        // Auto-remove timer when no real players online (only if enabled)
+        if (!autoCleanupEnabled || activeBots.isEmpty()) {
             emptyServerTicks = 0;
             return;
         }
@@ -132,8 +143,7 @@ public class BotManager {
     /**
      * Spawns a fake player bot at the given position in the given world.
      */
-    public static boolean spawnBot(MinecraftServer server, String name, Vec3 pos, ServerLevel world, UUID ownerUUID,
-            String ownerName) {
+    public static boolean spawnBot(MinecraftServer server, String name, Vec3 pos, ServerLevel world, UUID ownerUUID, String ownerName) {
         try {
             UUID botUUID = UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes());
             GameProfile profile = new GameProfile(botUUID, name);
@@ -155,8 +165,7 @@ public class BotManager {
             // Track it with owner info
             activeBots.put(name.toLowerCase(), new BotInfo(bot, ownerUUID, ownerName, pos, world));
 
-            AfkBotMod.LOGGER.info("Spawned AFK bot: {} (owner: {}) at ({}, {}, {})", name, ownerName, pos.x, pos.y,
-                    pos.z);
+            AfkBotMod.LOGGER.info("Spawned AFK bot: {} (owner: {}) at ({}, {}, {})", name, ownerName, pos.x, pos.y, pos.z);
             return true;
 
         } catch (Exception e) {
@@ -193,9 +202,9 @@ public class BotManager {
      */
     public static int removeAllBotsByOwner(MinecraftServer server, UUID ownerUUID) {
         List<String> toRemove = activeBots.entrySet().stream()
-                .filter(e -> e.getValue().ownerUUID.equals(ownerUUID))
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
+            .filter(e -> e.getValue().ownerUUID.equals(ownerUUID))
+            .map(Map.Entry::getKey)
+            .collect(Collectors.toList());
 
         for (String name : toRemove) {
             removeBotInternal(server, name);

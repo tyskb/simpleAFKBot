@@ -152,10 +152,12 @@ public class AfkBotMod implements ModInitializer {
                         CommandSourceStack source = context.getSource();
                         int perPlayer = BotManager.getMaxBotsPerPlayer();
                         int total = BotManager.getMaxBotsTotal();
+                        String cleanup = BotManager.isAutoCleanupEnabled() ? "on" : "off";
                         source.sendSuccess(() -> Component.literal(
                             "\u00a7b--- Bot Config ---\n" +
                             "\u00a77Max per player: \u00a7f" + perPlayer + "\n" +
-                            "\u00a77Max total: \u00a7f" + total
+                            "\u00a77Max total: \u00a7f" + total + "\n" +
+                            "\u00a77Auto-cleanup: \u00a7f" + cleanup
                         ), false);
                         return 1;
                     })
@@ -181,6 +183,26 @@ public class AfkBotMod implements ModInitializer {
                                 int value = IntegerArgumentType.getInteger(context, "value");
                                 BotManager.setMaxBotsTotal(value);
                                 source.sendSuccess(() -> Component.literal("\u00a7aMax total bots set to: " + value), true);
+                                return 1;
+                            })
+                        )
+                    )
+
+                    // /bot config autoCleanup on|off
+                    .then(Commands.literal("autoCleanup")
+                        .then(Commands.literal("on")
+                            .executes(context -> {
+                                CommandSourceStack source = context.getSource();
+                                BotManager.setAutoCleanupEnabled(true);
+                                source.sendSuccess(() -> Component.literal("\u00a7aAuto-cleanup enabled. Bots will be removed after 5 min with no real players."), true);
+                                return 1;
+                            })
+                        )
+                        .then(Commands.literal("off")
+                            .executes(context -> {
+                                CommandSourceStack source = context.getSource();
+                                BotManager.setAutoCleanupEnabled(false);
+                                source.sendSuccess(() -> Component.literal("\u00a7eAuto-cleanup disabled. Bots will stay until manually removed."), true);
                                 return 1;
                             })
                         )
