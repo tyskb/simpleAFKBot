@@ -1,11 +1,11 @@
-# Simple AFK Bot Mod for Minecraft 26.1
+# Simple AFK Bot Mod for Minecraft 26.2
 
 A simple, standalone server-side Fabric mod that spawns fake player bots to keep chunks loaded and farms running. No Carpet mod or client-side install required — just drop it in and go.
 
 ## Installation
 
-1. Make sure your server is running **Fabric Loader** and **Fabric API** for Minecraft 26.1
-2. Drop the `afk-bot-mod-1.0.0.jar` file into your server's `mods/` folder
+1. Make sure your server is running **Fabric Loader** and **Fabric API** for Minecraft 26.2
+2. Drop the `afk-bot-mod-1.2.1.jar` file into your server's `mods/` folder
 3. Restart the server
 4. No client-side installation needed — this is server-only
 
@@ -41,7 +41,7 @@ A simple, standalone server-side Fabric mod that spawns fake player bots to keep
 
 Requires Java 25+ and the Fabric toolchain.
 
-1. Download the Fabric mod template from [fabricmc.net/develop/template](https://fabricmc.net/develop/template/) for Minecraft 26.1
+1. Download the Fabric mod template from [fabricmc.net/develop/template](https://fabricmc.net/develop/template/) for Minecraft 26.2
 2. Replace the `src/` folder with the mod source files
 3. Run `./gradlew build`
 4. Find the built jar in `build/libs/`
