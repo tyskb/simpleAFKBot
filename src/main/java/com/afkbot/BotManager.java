@@ -212,8 +212,10 @@ public class BotManager {
             int radius = clampRadius(server, defaultRadius).value;
             BotInfo info = new BotInfo(bot, ownerUUID, ownerName, pos, world, radius);
 
-            // Force-load the surrounding chunks so the area is fully simulated
-            info.forcedChunks = BotChunkLoader.apply(world, pos, radius);
+            // Force-load the surrounding chunks so the area is fully simulated.
+            // Uses the bot's live position so it stays correct even if a bot
+            // is ever able to move.
+            info.forcedChunks = BotChunkLoader.apply(world, bot.position(), radius);
 
             // Track it with owner info
             activeBots.put(name.toLowerCase(), info);
@@ -290,9 +292,14 @@ public class BotManager {
         if (info == null) {
             return;
         }
+        // Nothing to do if the radius is unchanged — avoids needlessly
+        // unloading and re-loading potentially hundreds of chunks.
+        if (info.simulationRadius == radius) {
+            return;
+        }
         BotChunkLoader.release(info.spawnWorld, info.forcedChunks);
         info.simulationRadius = radius;
-        info.forcedChunks = BotChunkLoader.apply(info.spawnWorld, info.spawnPos, radius);
+        info.forcedChunks = BotChunkLoader.apply(info.spawnWorld, info.player.position(), radius);
         AfkBotMod.LOGGER.info("Bot '{}' simulation radius set to {}", name, radius);
     }
 
@@ -314,12 +321,14 @@ public class BotManager {
         return new ArrayList<>(activeBots.keySet());
     }
 
-    /** Returns bot entries formatted as "name (r=N)" for display. */
+    /**
+     * Returns bot entries formatted as "name (r=N)" for display, sorted by
+     * name so the output is stable and easy to scan.
+     */
     public static List<String> getBotDisplayList() {
-        List<String> out = new ArrayList<>();
-        for (Map.Entry<String, BotInfo> e : activeBots.entrySet()) {
-            out.add(e.getKey() + " (r=" + e.getValue().simulationRadius + ")");
-        }
-        return out;
+        return activeBots.entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .map(e -> e.getKey() + " (r=" + e.getValue().simulationRadius + ")")
+            .collect(Collectors.toList());
     }
 }
