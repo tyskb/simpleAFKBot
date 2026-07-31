@@ -114,11 +114,69 @@ public class AfkBotMod implements ModInitializer {
                     )
                 )
 
+                // /bot radius <name> [value] — view or set a bot's simulation radius
+                .then(Commands.literal("radius")
+                    .then(Commands.argument("name", StringArgumentType.word())
+                        // /bot radius <name> — show current radius
+                        .executes(context -> {
+                            CommandSourceStack source = context.getSource();
+                            String botName = StringArgumentType.getString(context, "name");
+
+                            if (!BotManager.hasBot(botName)) {
+                                source.sendSuccess(() -> Component.literal("§cNo bot found with name: " + botName), false);
+                                return 0;
+                            }
+
+                            int radius = BotManager.getBotRadius(botName);
+                            int serverMax = source.getServer().getPlayerList().getSimulationDistance();
+                            source.sendSuccess(() -> Component.literal(
+                                "§bBot '" + botName + "' simulation radius: §f" + radius +
+                                " §7(server max: " + serverMax + ")"
+                            ), false);
+                            return 1;
+                        })
+                        // /bot radius <name> <value> — set radius
+                        .then(Commands.argument("value", IntegerArgumentType.integer(1, BotManager.MAX_RADIUS_ARG))
+                            .executes(context -> {
+                                CommandSourceStack source = context.getSource();
+                                String botName = StringArgumentType.getString(context, "name");
+                                int requested = IntegerArgumentType.getInteger(context, "value");
+
+                                if (!BotManager.hasBot(botName)) {
+                                    source.sendSuccess(() -> Component.literal("§cNo bot found with name: " + botName), false);
+                                    return 0;
+                                }
+
+                                ServerPlayer caller = source.getPlayer();
+                                if (caller != null && !isOP(source) && !BotManager.isOwnedBy(botName, caller.getUUID())) {
+                                    source.sendSuccess(() -> Component.literal("§cYou don't own that bot!"), false);
+                                    return 0;
+                                }
+
+                                BotManager.ClampResult clamp = BotManager.clampRadius(source.getServer(), requested);
+                                BotManager.setBotRadius(botName, clamp.value);
+
+                                if (clamp.wasClamped) {
+                                    source.sendSuccess(() -> Component.literal(
+                                        "§eMax radius on this server is " + clamp.serverMax +
+                                        " (simulation-distance). Radius set to " + clamp.value + "."
+                                    ), true);
+                                } else {
+                                    source.sendSuccess(() -> Component.literal(
+                                        "§aBot '" + botName + "' simulation radius set to " + clamp.value + "."
+                                    ), true);
+                                }
+                                return 1;
+                            })
+                        )
+                    )
+                )
+
                 // /bot list
                 .then(Commands.literal("list")
                     .executes(context -> {
                         CommandSourceStack source = context.getSource();
-                        var bots = BotManager.getBotNames();
+                        var bots = BotManager.getBotDisplayList();
 
                         if (bots.isEmpty()) {
                             source.sendSuccess(() -> Component.literal("\u00a77No active bots."), false);
@@ -153,11 +211,17 @@ public class AfkBotMod implements ModInitializer {
                         int perPlayer = BotManager.getMaxBotsPerPlayer();
                         int total = BotManager.getMaxBotsTotal();
                         String cleanup = BotManager.isAutoCleanupEnabled() ? "on" : "off";
+                        int defRadius = BotManager.getDefaultRadius();
+                        int serverSim = source.getServer().getPlayerList().getSimulationDistance();
+                        int serverView = source.getServer().getPlayerList().getViewDistance();
                         source.sendSuccess(() -> Component.literal(
                             "\u00a7b--- Bot Config ---\n" +
                             "\u00a77Max per player: \u00a7f" + perPlayer + "\n" +
                             "\u00a77Max total: \u00a7f" + total + "\n" +
-                            "\u00a77Auto-cleanup: \u00a7f" + cleanup
+                            "\u00a77Auto-cleanup: \u00a7f" + cleanup + "\n" +
+                            "\u00a77Default radius: \u00a7f" + defRadius + "\n" +
+                            "\u00a77Server simulation-distance: \u00a7f" + serverSim + "\n" +
+                            "\u00a77Server view-distance: \u00a7f" + serverView
                         ), false);
                         return 1;
                     })
@@ -183,6 +247,29 @@ public class AfkBotMod implements ModInitializer {
                                 int value = IntegerArgumentType.getInteger(context, "value");
                                 BotManager.setMaxBotsTotal(value);
                                 source.sendSuccess(() -> Component.literal("\u00a7aMax total bots set to: " + value), true);
+                                return 1;
+                            })
+                        )
+                    )
+
+                    // /bot config defaultRadius <number>
+                    .then(Commands.literal("defaultRadius")
+                        .then(Commands.argument("value", IntegerArgumentType.integer(1, BotManager.MAX_RADIUS_ARG))
+                            .executes(context -> {
+                                CommandSourceStack source = context.getSource();
+                                int value = IntegerArgumentType.getInteger(context, "value");
+                                BotManager.setDefaultRadius(value);
+
+                                int serverMax = source.getServer().getPlayerList().getSimulationDistance();
+                                if (value > serverMax) {
+                                    source.sendSuccess(() -> Component.literal(
+                                        "§aDefault radius set to " + value +
+                                        ". §eNote: server simulation-distance is " + serverMax +
+                                        ", so new bots will be capped at " + serverMax + "."
+                                    ), true);
+                                } else {
+                                    source.sendSuccess(() -> Component.literal("§aDefault radius for new bots set to: " + value), true);
+                                }
                                 return 1;
                             })
                         )

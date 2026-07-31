@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.players.PlayerList;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.Vec3;
 
 import java.lang.reflect.Field;
@@ -27,6 +28,14 @@ public class BotManager {
 
     // Auto-cleanup toggle (can be turned on/off by OPs)
     private static boolean autoCleanupEnabled = true;
+
+    // Default simulation radius (in chunks) applied to newly spawned bots.
+    // Clamped to the server's simulation-distance at spawn time.
+    private static int defaultRadius = 10;
+
+    // Hard upper bound for the radius command argument. The real cap is the
+    // server's simulation-distance (see clampRadius).
+    public static final int MAX_RADIUS_ARG = 32;
 
     // Auto-remove timer: ticks since server had no real players
     private static int emptyServerTicks = 0;
@@ -58,6 +67,37 @@ public class BotManager {
         autoCleanupEnabled = value;
     }
 
+    public static int getDefaultRadius() {
+        return defaultRadius;
+    }
+
+    public static void setDefaultRadius(int value) {
+        defaultRadius = Math.max(1, value);
+    }
+
+    /** Result of clamping a requested radius against the server cap. */
+    public static class ClampResult {
+        public final int value;
+        public final boolean wasClamped;
+        public final int serverMax;
+
+        public ClampResult(int value, boolean wasClamped, int serverMax) {
+            this.value = value;
+            this.wasClamped = wasClamped;
+            this.serverMax = serverMax;
+        }
+    }
+
+    /**
+     * Clamps a requested radius to the server's simulation-distance, mirroring
+     * how a real player's simulation distance can never exceed the server's.
+     */
+    public static ClampResult clampRadius(MinecraftServer server, int requested) {
+        int serverMax = server.getPlayerList().getSimulationDistance();
+        int clamped = Math.max(1, Math.min(requested, serverMax));
+        return new ClampResult(clamped, clamped != requested, serverMax);
+    }
+
     /**
      * Stores info about a bot: who owns it, the entity, and spawn position.
      */
@@ -68,12 +108,18 @@ public class BotManager {
         public final Vec3 spawnPos;
         public final ServerLevel spawnWorld;
 
-        public BotInfo(ServerPlayer player, UUID ownerUUID, String ownerName, Vec3 spawnPos, ServerLevel spawnWorld) {
+        // Simulation radius (in chunks) and the chunks currently force-loaded
+        // for this bot. Both change together via setBotRadius.
+        public int simulationRadius;
+        public Set<ChunkPos> forcedChunks = new HashSet<>();
+
+        public BotInfo(ServerPlayer player, UUID ownerUUID, String ownerName, Vec3 spawnPos, ServerLevel spawnWorld, int simulationRadius) {
             this.player = player;
             this.ownerUUID = ownerUUID;
             this.ownerName = ownerName;
             this.spawnPos = spawnPos;
             this.spawnWorld = spawnWorld;
+            this.simulationRadius = simulationRadius;
         }
     }
 
@@ -162,10 +208,19 @@ public class BotManager {
             // Add to server
             server.getPlayerList().placeNewPlayer(connection, bot, CommonListenerCookie.createInitial(profile, false));
 
-            // Track it with owner info
-            activeBots.put(name.toLowerCase(), new BotInfo(bot, ownerUUID, ownerName, pos, world));
+            // Determine the simulation radius (default, capped by the server)
+            int radius = clampRadius(server, defaultRadius).value;
+            BotInfo info = new BotInfo(bot, ownerUUID, ownerName, pos, world, radius);
 
-            AfkBotMod.LOGGER.info("Spawned AFK bot: {} (owner: {}) at ({}, {}, {})", name, ownerName, pos.x, pos.y, pos.z);
+            // Force-load the surrounding chunks so the area is fully simulated.
+            // Uses the bot's live position so it stays correct even if a bot
+            // is ever able to move.
+            info.forcedChunks = BotChunkLoader.apply(world, bot.position(), radius);
+
+            // Track it with owner info
+            activeBots.put(name.toLowerCase(), info);
+
+            AfkBotMod.LOGGER.info("Spawned AFK bot: {} (owner: {}) at ({}, {}, {}) with radius {}", name, ownerName, pos.x, pos.y, pos.z, radius);
             return true;
 
         } catch (Exception e) {
@@ -180,6 +235,7 @@ public class BotManager {
     private static void removeBotInternal(MinecraftServer server, String name) {
         BotInfo info = activeBots.remove(name.toLowerCase());
         if (info != null) {
+            BotChunkLoader.release(info.spawnWorld, info.forcedChunks);
             server.getPlayerList().remove(info.player);
         }
     }
@@ -218,11 +274,39 @@ public class BotManager {
     public static int removeAllBots(MinecraftServer server) {
         int count = activeBots.size();
         for (BotInfo info : activeBots.values()) {
+            BotChunkLoader.release(info.spawnWorld, info.forcedChunks);
             server.getPlayerList().remove(info.player);
         }
         activeBots.clear();
         AfkBotMod.LOGGER.info("Removed all {} AFK bot(s)", count);
         return count;
+    }
+
+    /**
+     * Changes a bot's simulation radius: releases its old force-loaded chunks
+     * and applies a new set around its spawn position. The value is assumed to
+     * already be clamped by the caller via {@link #clampRadius}.
+     */
+    public static void setBotRadius(String name, int radius) {
+        BotInfo info = activeBots.get(name.toLowerCase());
+        if (info == null) {
+            return;
+        }
+        // Nothing to do if the radius is unchanged — avoids needlessly
+        // unloading and re-loading potentially hundreds of chunks.
+        if (info.simulationRadius == radius) {
+            return;
+        }
+        BotChunkLoader.release(info.spawnWorld, info.forcedChunks);
+        info.simulationRadius = radius;
+        info.forcedChunks = BotChunkLoader.apply(info.spawnWorld, info.player.position(), radius);
+        AfkBotMod.LOGGER.info("Bot '{}' simulation radius set to {}", name, radius);
+    }
+
+    /** Returns a bot's current simulation radius, or -1 if no such bot. */
+    public static int getBotRadius(String name) {
+        BotInfo info = activeBots.get(name.toLowerCase());
+        return info != null ? info.simulationRadius : -1;
     }
 
     public static boolean hasBot(String name) {
@@ -235,5 +319,16 @@ public class BotManager {
 
     public static List<String> getBotNames() {
         return new ArrayList<>(activeBots.keySet());
+    }
+
+    /**
+     * Returns bot entries formatted as "name (r=N)" for display, sorted by
+     * name so the output is stable and easy to scan.
+     */
+    public static List<String> getBotDisplayList() {
+        return activeBots.entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .map(e -> e.getKey() + " (r=" + e.getValue().simulationRadius + ")")
+            .collect(Collectors.toList());
     }
 }
